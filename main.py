@@ -1,96 +1,138 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import altair as alt
 
-# ---------------------------
-# 🎯 기본 설정
-# ---------------------------
-st.set_page_config(page_title="MBTI by Country", page_icon="🌍", layout="wide")
+# --------------------------
+# 기본 설정
+# --------------------------
+st.set_page_config(page_title="MBTI World Dashboard", page_icon="🌎", layout="wide")
 
-st.title("🌍 국가별 MBTI 분포 분석 대시보드")
-st.markdown("**특정 MBTI 유형이 높은 국가 TOP 10**을 시각적으로 확인할 수 있는 대시보드입니다.")
+st.title("🌍 국가별 MBTI 데이터 통합 대시보드")
+st.markdown("""
+업로드한 CSV 데이터를 기반으로  
+1️⃣ **국가별로 가장 비율이 높은 MBTI 유형을 지도에 표시**하고,  
+2️⃣ **선택한 MBTI 유형의 상위 10개 국가를 막대그래프로 시각화**합니다.
+""")
 
-# ---------------------------
-# 📂 데이터 불러오기
-# ---------------------------
-@st.cache_data
-def load_data():
-    # 업로드된 CSV 파일 경로 또는 URL 수정 가능
-    df = pd.read_csv("countriesMBTI_16types.csv")
-    return df
-
-df = load_data()
-
-# ---------------------------
-# 🔍 데이터 확인
-# ---------------------------
-st.subheader("데이터 미리보기")
-st.dataframe(df.head())
-
-# ---------------------------
-# 🧠 사용자 입력
-# ---------------------------
-st.sidebar.header("🔧 분석 설정")
-
-# MBTI 컬럼명 자동 탐색
-mbti_cols = [c for c in df.columns if "mbti" in c.lower() or "type" in c.lower() or "personality" in c.lower()]
-
-if not mbti_cols:
-    st.error("❗ MBTI 관련 컬럼을 찾을 수 없습니다. 파일에 'MBTI' 또는 'type' 단어가 포함된 컬럼이 있는지 확인해주세요.")
+# --------------------------
+# 파일 업로드
+# --------------------------
+uploaded_file = st.file_uploader("📁 MBTI 데이터 CSV 업로드", type=["csv"])
+if uploaded_file is None:
+    st.info("👆 먼저 CSV 파일을 업로드해주세요.")
     st.stop()
 
-# 국가 컬럼 추정
-country_cols = [c for c in df.columns if "country" in c.lower() or "nation" in c.lower() or "location" in c.lower()]
-if not country_cols:
-    st.error("❗ 국가 관련 컬럼을 찾을 수 없습니다. 파일에 'country' 또는 'nation' 단어가 포함된 컬럼이 있는지 확인해주세요.")
+try:
+    df = pd.read_csv(uploaded_file)
+    st.success("✅ 파일이 성공적으로 업로드되었습니다!")
+except Exception as e:
+    st.error(f"❌ 파일을 읽는 중 오류가 발생했습니다: {e}")
     st.stop()
 
-country_col = country_cols[0]
-mbti_col = mbti_cols[0]
+with st.expander("🔎 데이터 미리보기"):
+    st.dataframe(df.head())
 
-# ---------------------------
-# 📊 유형 선택
-# ---------------------------
-unique_mbti = sorted(df[mbti_col].dropna().unique())
-selected_type = st.sidebar.selectbox("분석할 MBTI 유형 선택", unique_mbti, index=0)
+# --------------------------
+# 컬럼 설정
+# --------------------------
+country_col = "Country"
+mbti_cols = [c for c in df.columns if c != country_col]
 
-# ---------------------------
-# 📈 집계 및 시각화
-# ---------------------------
-st.subheader(f"🧩 {selected_type} 유형이 많은 국가 TOP 10")
+# --------------------------
+# 🧩 국가별 MBTI Top 3 구하기
+# --------------------------
+top_types = []
+for _, row in df.iterrows():
+    country = row[country_col]
+    sorted_types = row[mbti_cols].sort_values(ascending=False)
+    top1 = sorted_types.index[0]
+    top2 = sorted_types.index[1]
+    top3 = sorted_types.index[2]
+    top_types.append({
+        "Country": country,
+        "Top1_Type": top1,
+        "Top1_Value": sorted_types.iloc[0],
+        "Top2_Type": top2,
+        "Top2_Value": sorted_types.iloc[1],
+        "Top3_Type": top3,
+        "Top3_Value": sorted_types.iloc[2]
+    })
 
-# 국가별 개수 집계
+df_top = pd.DataFrame(top_types)
+
+# --------------------------
+# 🎨 16개 색상 팔레트
+# --------------------------
+mbti_colors = {
+    "ISTJ": "#1f77b4", "ISFJ": "#aec7e8", "INFJ": "#9467bd", "INTJ": "#8c564b",
+    "ISTP": "#2ca02c", "ISFP": "#98df8a", "INFP": "#ff7f0e", "INTP": "#ffbb78",
+    "ESTP": "#d62728", "ESFP": "#ff9896", "ENFP": "#e377c2", "ENTP": "#f7b6d2",
+    "ESTJ": "#7f7f7f", "ESFJ": "#c7c7c7", "ENFJ": "#bcbd22", "ENTJ": "#17becf"
+}
+
+# --------------------------
+# 🗺️ 지도 시각화 (Plotly)
+# --------------------------
+st.subheader("🗺️ 국가별 MBTI Top1 지도")
+
+fig = px.choropleth(
+    df_top,
+    locations="Country",
+    locationmode="country names",
+    color="Top1_Type",
+    color_discrete_map=mbti_colors,
+    hover_name="Country",
+    hover_data={
+        "Top1_Type": True, "Top1_Value": True,
+        "Top2_Type": True, "Top2_Value": True,
+        "Top3_Type": True, "Top3_Value": True,
+        "Country": False
+    },
+    title="🌍 각 국가에서 가장 높은 비율을 차지하는 MBTI 유형",
+    projection="natural earth"
+)
+
+fig.update_layout(
+    legend_title_text="MBTI 유형",
+    coloraxis_showscale=False,
+    geo=dict(showframe=False, showcoastlines=True),
+    margin=dict(l=10, r=10, t=50, b=10),
+)
+st.plotly_chart(fig, use_container_width=True)
+
+# --------------------------
+# 📊 막대그래프 시각화 (Altair)
+# --------------------------
+st.subheader("📈 특정 MBTI 유형의 상위 10개 국가")
+
+selected_type = st.selectbox("분석할 MBTI 유형 선택", mbti_cols, index=0)
+
 top_countries = (
-    df[df[mbti_col] == selected_type]
-    .groupby(country_col)
-    .size()
-    .reset_index(name="count")
-    .sort_values("count", ascending=False)
+    df[[country_col, selected_type]]
+    .sort_values(by=selected_type, ascending=False)
     .head(10)
 )
 
-# 시각화: Altair
-chart = (
+bar_chart = (
     alt.Chart(top_countries)
     .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
     .encode(
-        x=alt.X("count:Q", title="인원 수", axis=alt.Axis(grid=False)),
+        x=alt.X(f"{selected_type}:Q", title="비율(%)"),
         y=alt.Y(f"{country_col}:N", sort='-x', title="국가"),
-        color=alt.Color("count:Q", scale=alt.Scale(scheme="tealblues")),
-        tooltip=[country_col, "count"]
+        color=alt.Color(f"{selected_type}:Q", scale=alt.Scale(scheme="tealblues")),
+        tooltip=[country_col, selected_type]
     )
     .properties(width=700, height=400)
-    .configure_axis(labelFontSize=12, titleFontSize=13)
 )
 
-st.altair_chart(chart, use_container_width=True)
+st.altair_chart(bar_chart, use_container_width=True)
 
-# ---------------------------
-# 🧾 부가 기능
-# ---------------------------
-with st.expander("🔎 상세 데이터 보기"):
-    st.dataframe(top_countries)
+# --------------------------
+# 📋 Top3 데이터 테이블
+# --------------------------
+with st.expander("📋 국가별 MBTI Top3 데이터 보기"):
+    st.dataframe(df_top)
 
 st.markdown("---")
-st.caption("📘 데이터 출처: countriesMBTI_16types.csv | 시각화: Altair | 작성자: Streamlit Cloud 예시 앱")
-
+st.caption("📘 시각화: Plotly + Altair | 데이터: 업로드된 CSV | 제작: Streamlit Cloud Demo")
