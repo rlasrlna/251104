@@ -11,8 +11,8 @@ st.set_page_config(page_title="MBTI World Dashboard", page_icon="🌎", layout="
 st.title("🌍 국가별 MBTI 데이터 통합 대시보드")
 st.markdown("""
 업로드한 CSV 데이터를 기반으로  
-1️⃣ **국가별로 가장 비율이 높은 MBTI 유형을 지도에 표시**하고,  
-2️⃣ **선택한 MBTI 유형의 상위 10개 국가를 막대그래프로 시각화**합니다.
+**좌측 지도**에서는 각 국가의 대표 MBTI를,  
+**우측 그래프**에서는 선택한 MBTI 유형의 상위 10개 국가를 시각화합니다.
 """)
 
 # --------------------------
@@ -40,7 +40,7 @@ country_col = "Country"
 mbti_cols = [c for c in df.columns if c != country_col]
 
 # --------------------------
-# 🧩 국가별 MBTI Top 3 구하기
+# 🧩 국가별 MBTI Top3 계산
 # --------------------------
 top_types = []
 for _, row in df.iterrows():
@@ -62,7 +62,7 @@ for _, row in df.iterrows():
 df_top = pd.DataFrame(top_types)
 
 # --------------------------
-# 🎨 16개 색상 팔레트
+# 🎨 16개 MBTI 색상 팔레트
 # --------------------------
 mbti_colors = {
     "ISTJ": "#1f77b4", "ISFJ": "#aec7e8", "INFJ": "#9467bd", "INTJ": "#8c564b",
@@ -72,66 +72,75 @@ mbti_colors = {
 }
 
 # --------------------------
-# 🗺️ 지도 시각화 (Plotly)
+# 🎛️ 사이드바 설정
 # --------------------------
-st.subheader("🗺️ 국가별 MBTI Top1 지도")
-
-fig = px.choropleth(
-    df_top,
-    locations="Country",
-    locationmode="country names",
-    color="Top1_Type",
-    color_discrete_map=mbti_colors,
-    hover_name="Country",
-    hover_data={
-        "Top1_Type": True, "Top1_Value": True,
-        "Top2_Type": True, "Top2_Value": True,
-        "Top3_Type": True, "Top3_Value": True,
-        "Country": False
-    },
-    title="🌍 각 국가에서 가장 높은 비율을 차지하는 MBTI 유형",
-    projection="natural earth"
-)
-
-fig.update_layout(
-    legend_title_text="MBTI 유형",
-    coloraxis_showscale=False,
-    geo=dict(showframe=False, showcoastlines=True),
-    margin=dict(l=10, r=10, t=50, b=10),
-)
-st.plotly_chart(fig, use_container_width=True)
+st.sidebar.header("🧭 분석 설정")
+selected_type = st.sidebar.selectbox("분석할 MBTI 유형 선택", mbti_cols, index=0)
 
 # --------------------------
-# 📊 막대그래프 시각화 (Altair)
+# 2열 레이아웃
 # --------------------------
-st.subheader("📈 특정 MBTI 유형의 상위 10개 국가")
+left_col, right_col = st.columns([1.2, 1])
 
-selected_type = st.selectbox("분석할 MBTI 유형 선택", mbti_cols, index=0)
-
-top_countries = (
-    df[[country_col, selected_type]]
-    .sort_values(by=selected_type, ascending=False)
-    .head(10)
-)
-
-bar_chart = (
-    alt.Chart(top_countries)
-    .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
-    .encode(
-        x=alt.X(f"{selected_type}:Q", title="비율(%)"),
-        y=alt.Y(f"{country_col}:N", sort='-x', title="국가"),
-        color=alt.Color(f"{selected_type}:Q", scale=alt.Scale(scheme="tealblues")),
-        tooltip=[country_col, selected_type]
+# --------------------------
+# 🗺️ 왼쪽: Plotly 지도
+# --------------------------
+with left_col:
+    st.subheader("🗺️ 국가별 대표 MBTI 지도")
+    fig = px.choropleth(
+        df_top,
+        locations="Country",
+        locationmode="country names",
+        color="Top1_Type",
+        color_discrete_map=mbti_colors,
+        hover_name="Country",
+        hover_data={
+            "Top1_Type": True, "Top1_Value": True,
+            "Top2_Type": True, "Top2_Value": True,
+            "Top3_Type": True, "Top3_Value": True,
+            "Country": False
+        },
+        title="각 국가에서 비율이 가장 높은 MBTI 유형",
+        projection="natural earth"
     )
-    .properties(width=700, height=400)
-)
-
-st.altair_chart(bar_chart, use_container_width=True)
+    fig.update_layout(
+        legend_title_text="MBTI 유형",
+        coloraxis_showscale=False,
+        geo=dict(showframe=False, showcoastlines=True),
+        margin=dict(l=10, r=10, t=40, b=10),
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 # --------------------------
-# 📋 Top3 데이터 테이블
+# 📊 오른쪽: Altair 막대그래프
 # --------------------------
-with st.expander("📋 국가별 MBTI Top3 데이터 보기"):
+with right_col:
+    st.subheader(f"📈 {selected_type} 유형 비율 상위 10개 국가")
+    top_countries = (
+        df[[country_col, selected_type]]
+        .sort_values(by=selected_type, ascending=False)
+        .head(10)
+    )
+
+    bar_chart = (
+        alt.Chart(top_countries)
+        .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+        .encode(
+            x=alt.X(f"{selected_type}:Q", title="비율(%)"),
+            y=alt.Y(f"{country_col}:N", sort='-x', title="국가"),
+            color=alt.Color(f"{selected_type}:Q", scale=alt.Scale(scheme="tealblues")),
+            tooltip=[country_col, selected_type]
+        )
+        .properties(width="container", height=450)
+    )
+
+    st.altair_chart(bar_chart, use_container_width=True)
+
+# --------------------------
+# 📋 데이터 테이블
+# --------------------------
+st.markdown("### 📋 국가별 MBTI Top3 데이터")
+with st.expander("세부 데이터 보기"):
     st.dataframe(df_top)
 
 st.markdown("---")
